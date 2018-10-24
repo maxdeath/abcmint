@@ -1524,7 +1524,7 @@ bool CWallet::NewKeyPool()
     return true;
 }
 
-bool CWallet::TopUpKeyPool()
+bool CWallet::TopUpKeyPool(bool once)
 {
     {
         LOCK(cs_wallet);
@@ -1535,7 +1535,12 @@ bool CWallet::TopUpKeyPool()
         CWalletDB walletdb(strWalletFile);
 
         // Top up key pool
-        unsigned int nTargetSize = GetArg("-keypool", KEY_POOL_SIZE);
+        unsigned int nTargetSize;
+        if (once)
+            nTargetSize = 1;
+        else
+           nTargetSize = GetArg("-keypool", KEY_POOL_SIZE);
+
         while (setKeyPool.size() < (nTargetSize + 1))
         {
             int64 nEnd = 1;
@@ -1553,10 +1558,13 @@ bool CWallet::TopUpKeyPool()
 void CWallet::ReserveKeyFromKeyPool(int64& nIndex, CKeyPool& keypool)
 {
     nIndex = -1;
-    return;
     keypool.vchPubKey = CPubKey();
     {
         LOCK(cs_wallet);
+
+        //need to keep the sequence, don't let it empty
+        if(setKeyPool.size() == 1)
+            TopUpKeyPool(true);
 
         // Get the oldest key
         if(setKeyPool.empty())
