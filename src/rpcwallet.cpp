@@ -104,9 +104,6 @@ Value getnewaddress(const Array& params, bool fHelp)
     if (params.size() > 0)
         strAccount = AccountFromValue(params[0]);
 
-    if (!pwalletMain->IsLocked())
-        pwalletMain->TopUpKeyPool();
-
     // Generate a new key that is added to wallet
     CPubKey newKey;
     if(pwalletMain->GetKeyFromPool(newKey, false)) {

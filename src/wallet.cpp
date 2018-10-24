@@ -9,6 +9,7 @@
 #include "ui_interface.h"
 #include "base58.h"
 #include <boost/algorithm/string/replace.hpp>
+#include "exchange.h"
 
 using namespace std;
 
@@ -1534,7 +1535,7 @@ bool CWallet::TopUpKeyPool()
         CWalletDB walletdb(strWalletFile);
 
         // Top up key pool
-        unsigned int nTargetSize = max(GetArg("-keypool", 0), 0LL);
+        unsigned int nTargetSize = GetArg("-keypool", KEY_POOL_SIZE);
         while (setKeyPool.size() < (nTargetSize + 1))
         {
             int64 nEnd = 1;
@@ -1556,10 +1557,7 @@ void CWallet::ReserveKeyFromKeyPool(int64& nIndex, CKeyPool& keypool)
     keypool.vchPubKey = CPubKey();
     {
         LOCK(cs_wallet);
-/*
-        if (!IsLocked())
-            TopUpKeyPool();
-*/
+
         // Get the oldest key
         if(setKeyPool.empty())
             return;
@@ -1783,20 +1781,11 @@ set< set<CTxDestination> > CWallet::GetAddressGroupings()
 
 bool CReserveKey::GetReservedKey(CPubKey& pubkey)
 {
-    if (nIndex == -1)
-    {
-        CKeyPool keypool;
-        pwallet->ReserveKeyFromKeyPool(nIndex, keypool);
-        if (nIndex != -1)
-            vchPubKey = keypool.vchPubKey;
-        else {
-            if (pwallet->vchDefaultKey.IsValid()) {
-                //printf("CReserveKey::GetReservedKey(): Warning: Using default key instead of a new key, top up your keypool!");
-                vchPubKey = pwallet->vchDefaultKey;
-            } else
-                return false;
-        }
-    }
+    if (pwallet->vchDefaultKey.IsValid())
+        vchPubKey = pwallet->vchDefaultKey;
+    else
+        return false;
+
     assert(vchPubKey.IsValid());
     pubkey = vchPubKey;
     return true;

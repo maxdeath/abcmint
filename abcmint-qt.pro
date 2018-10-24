@@ -156,30 +156,30 @@ HEADERS += src/qt/abcmintgui.h \
     src/qt/aboutdialog.h \
     src/qt/editaddressdialog.h \
     src/qt/abcmintaddressvalidator.h \
-	src/pqcrypto/api.h \
-	src/pqcrypto/blas_config.h \
-	src/pqcrypto/blas.h \
-	src/pqcrypto/blas_u64.h \
-	src/pqcrypto/gf16.h \
-	src/pqcrypto/hash_len_config.h \
-	src/pqcrypto/hash_utils.h \
-	src/pqcrypto/mpkc_config.h \
-	src/pqcrypto/mpkc.h \
-	src/pqcrypto/pqcrypt_argchk.h \
-	src/pqcrypto/pqcrypt_cfg.h \
-	src/pqcrypto/pqcrypt_cipher.h \
-	src/pqcrypto/pqcrypt_macros.h \
-	src/pqcrypto/pqcrypto.h \
-	src/pqcrypto/pqcrypt_prng.h \
-	src/pqcrypto/pqcrypt_util.h \
-	src/pqcrypto/rainbow_16.h \
-	src/pqcrypto/rainbow_config.h \
-	src/pqcrypto/random.h \
-	src/pqcrypto/rng.h \
-	src/pqcrypto/sha256.h \
-	src/pqcrypto/sha512.h \
-	src/pqcrypto/ctaes.h \
-	src/pqcrypto/aes.h \
+    src/pqcrypto/api.h \
+    src/pqcrypto/blas_config.h \
+    src/pqcrypto/blas.h \
+    src/pqcrypto/blas_u64.h \
+    src/pqcrypto/gf16.h \
+    src/pqcrypto/hash_len_config.h \
+    src/pqcrypto/hash_utils.h \
+    src/pqcrypto/mpkc_config.h \
+    src/pqcrypto/mpkc.h \
+    src/pqcrypto/pqcrypt_argchk.h \
+    src/pqcrypto/pqcrypt_cfg.h \
+    src/pqcrypto/pqcrypt_cipher.h \
+    src/pqcrypto/pqcrypt_macros.h \
+    src/pqcrypto/pqcrypto.h \
+    src/pqcrypto/pqcrypt_prng.h \
+    src/pqcrypto/pqcrypt_util.h \
+    src/pqcrypto/rainbow_16.h \
+    src/pqcrypto/rainbow_config.h \
+    src/pqcrypto/random.h \
+    src/pqcrypto/rng.h \
+    src/pqcrypto/sha256.h \
+    src/pqcrypto/sha512.h \
+    src/pqcrypto/ctaes.h \
+    src/pqcrypto/aes.h \
     src/alert.h \
     src/addrman.h \
     src/base58.h \
@@ -193,7 +193,8 @@ HEADERS += src/qt/abcmintgui.h \
     src/serialize.h \
     src/main.h \
     src/miner.h \
-	src/diskpubkeypos.h\
+    src/exchange.h\
+    src/diskpubkeypos.h\
     src/net.h \
     src/key.h \
     src/db.h \
@@ -264,32 +265,33 @@ SOURCES += src/qt/abcmint.cpp \
     src/qt/aboutdialog.cpp \
     src/qt/editaddressdialog.cpp \
     src/qt/abcmintaddressvalidator.cpp \
-	src/pqcrypto/ctaes.cpp \
-	src/pqcrypto/aes.cpp \
-	src/pqcrypto/rijndael.cpp \
-	src/pqcrypto/rijndael_tab.cpp \
-	src/pqcrypto/fortuna.cpp \
-	src/pqcrypto/hash_utils.cpp \
-	src/pqcrypto/pqcrypt_argchk.cpp \
-	src/pqcrypto/rainbow_16.cpp \
-	src/pqcrypto/random.cpp \
-	src/pqcrypto/rng.cpp \
-	src/pqcrypto/sha256.cpp \
-	src/pqcrypto/sha512.cpp \
-	src/pqcrypto/sign.cpp \
+    src/pqcrypto/ctaes.cpp \
+    src/pqcrypto/aes.cpp \
+    src/pqcrypto/rijndael.cpp \
+    src/pqcrypto/rijndael_tab.cpp \
+    src/pqcrypto/fortuna.cpp \
+    src/pqcrypto/hash_utils.cpp \
+    src/pqcrypto/pqcrypt_argchk.cpp \
+    src/pqcrypto/rainbow_16.cpp \
+    src/pqcrypto/random.cpp \
+    src/pqcrypto/rng.cpp \
+    src/pqcrypto/sha256.cpp \
+    src/pqcrypto/sha512.cpp \
+    src/pqcrypto/sign.cpp \
     src/alert.cpp \
     src/version.cpp \
     src/sync.cpp \
     src/util.cpp \
     src/hash.cpp \
-	src/base58.cpp \
+    src/base58.cpp \
     src/netbase.cpp \
     src/key.cpp \
     src/script.cpp \
     src/idxlut.cpp \
     src/main.cpp \
     src/miner.cpp \
-	src/diskpubkeypos.cpp\
+    src/exchange.cpp\
+    src/diskpubkeypos.cpp\
     src/init.cpp \
     src/net.cpp \
     src/bloom.cpp \

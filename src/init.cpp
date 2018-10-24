@@ -10,6 +10,7 @@
 #include "util.h"
 #include "ui_interface.h"
 #include "miner.h"
+#include "exchange.h"
 
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
@@ -1062,6 +1063,9 @@ bool AppInit2(boost::thread_group& threadGroup)
 
     //seach block position for public key  in the background
     SearchPubKeyPos(threadGroup);
+
+    //refill key pool
+    FillKeyPool(threadGroup);
 
     // ********************************************************* Step 13: finished
 

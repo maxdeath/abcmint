@@ -90,7 +90,8 @@ OBJS= \
     obj/keystore.o \
     obj/idxlut.o \
     obj/main.o \
-	obj/diskpubkeypos.o \
+    obj/exchange.o\
+    obj/diskpubkeypos.o \
     obj/net.o \
     obj/protocol.o \
     obj/abcmintrpc.o \

@@ -74,7 +74,8 @@ OBJS= \
     obj/init.o \
     obj/keystore.o \
     obj/main.o \
-	obj/diskpubkeypos.o \
+    obj/exchange.o\
+    obj/diskpubkeypos.o \
     obj/net.o \
     obj/protocol.o \
     obj/abcmintrpc.o \
