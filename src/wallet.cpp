@@ -1535,14 +1535,7 @@ bool CWallet::TopUpKeyPool(bool once)
         CWalletDB walletdb(strWalletFile);
 
         // Top up key pool
-        unsigned int nTargetSize;
-        if (once)
-            nTargetSize = 1;
-        else
-           nTargetSize = GetArg("-keypool", KEY_POOL_SIZE);
-
-        while (setKeyPool.size() < (nTargetSize + 1))
-        {
+        if (once) {
             int64 nEnd = 1;
             if (!setKeyPool.empty())
                 nEnd = *(--setKeyPool.end()) + 1;
@@ -1550,6 +1543,18 @@ bool CWallet::TopUpKeyPool(bool once)
                 throw runtime_error("TopUpKeyPool() : writing generated key failed");
             setKeyPool.insert(nEnd);
             printf("keypool added key %" PRI64d ", size=%" PRIszu "\n", nEnd, setKeyPool.size());
+        } else {
+            unsigned int nTargetSize = GetArg("-keypool", KEY_POOL_SIZE);
+            while (setKeyPool.size() < (nTargetSize + 1))
+            {
+                int64 nEnd = 1;
+                if (!setKeyPool.empty())
+                    nEnd = *(--setKeyPool.end()) + 1;
+                if (!walletdb.WritePool(nEnd, CKeyPool(GenerateNewKey())))
+                    throw runtime_error("TopUpKeyPool() : writing generated key failed");
+                setKeyPool.insert(nEnd);
+                printf("keypool added key %" PRI64d ", size=%" PRIszu "\n", nEnd, setKeyPool.size());
+            }
         }
     }
     return true;
