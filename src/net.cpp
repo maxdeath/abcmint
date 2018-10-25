@@ -568,8 +568,8 @@ void CNode::PushVersion()
     CAddress addrYou = (addr.IsRoutable() && !IsProxy(addr) ? addr : CAddress(CService("0.0.0.0",0)));
     CAddress addrMe = GetLocalAddress(&addr);
     getRandBytes((unsigned char*)&nLocalHostNonce, sizeof(nLocalHostNonce));
-    printf("send version message: version %d, blocks=%d, us=%s, them=%s, peer=%s\n", PROTOCOL_VERSION, nBestHeight, addrMe.ToString().c_str(), addrYou.ToString().c_str(), addr.ToString().c_str());
-    PushMessage("version", PROTOCOL_VERSION, nLocalServices, nTime, addrYou, addrMe,
+    printf("send version message: version %d, blocks=%d, us=%s, them=%s, peer=%s\n", ABC_PROTOCOL_VERSION, nBestHeight, addrMe.ToString().c_str(), addrYou.ToString().c_str(), addr.ToString().c_str());
+    PushMessage("version", ABC_PROTOCOL_VERSION, nLocalServices, nTime, addrYou, addrMe,
                 nLocalHostNonce, FormatSubVersion(CLIENT_NAME, CLIENT_VERSION, std::vector<string>()), nBestHeight);
 }
 
@@ -1677,7 +1677,7 @@ void static ProcessGetData(CNode* pfrom)
                     LOCK(mempool.cs);
                     if (mempool.exists(inv.hash)) {
                         CTransaction tx = mempool.lookup(inv.hash);
-                        CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+                        CDataStream ss(SER_NETWORK, ABC_PROTOCOL_VERSION);
                         ss.reserve(1000);
                         ss << tx;
                         pfrom->PushMessage("tx", ss);
@@ -1784,7 +1784,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         // Change version
         pfrom->PushMessage("verack");
-        pfrom->ssSend.SetVersion(min(pfrom->nVersion, PROTOCOL_VERSION));
+        pfrom->ssSend.SetVersion(min(pfrom->nVersion, ABC_PROTOCOL_VERSION));
 
         if (!pfrom->fInbound)
         {
@@ -1833,7 +1833,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
     else if (strCommand == "verack")
     {
-        pfrom->SetRecvVersion(min(pfrom->nVersion, PROTOCOL_VERSION));
+        pfrom->SetRecvVersion(min(pfrom->nVersion, ABC_PROTOCOL_VERSION));
     }
 
 
@@ -2905,7 +2905,7 @@ instance_of_cnetcleanup;
 
 void RelayTransaction(const CTransaction& tx, const uint256& hash)
 {
-    CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+    CDataStream ss(SER_NETWORK, ABC_PROTOCOL_VERSION);
     ss.reserve(10000);
     ss << tx;
     RelayTransaction(tx, hash, ss);

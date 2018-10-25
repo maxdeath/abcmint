@@ -132,7 +132,7 @@ Value getwork(const Array& params, bool fHelp)
             nTransactionsUpdatedLast = nTransactionsUpdated;
             CBlockIndex* pindexPrevNew = pindexBest;
             nStart = GetTime();
-            
+
             if(!pMiningKey)
                 throw JSONRPCError(RPC_INTERNAL_ERROR, "not in server mode");
 
@@ -295,7 +295,7 @@ Value getblocktemplate(const Array& params, bool fHelp)
 
         Object entry;
 
-        CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);
+        CDataStream ssTx(SER_NETWORK, ABC_PROTOCOL_VERSION);
         ssTx << tx;
         entry.push_back(Pair("data", HexStr(ssTx.begin(), ssTx.end())));
 
@@ -352,7 +352,7 @@ Value submitblock(const Array& params, bool fHelp)
             "See https://en.abcmint.it/wiki/BIP_0022 for full specification.");
 
     vector<unsigned char> blockData(ParseHex(params[0].get_str()));
-    CDataStream ssBlock(blockData, SER_NETWORK, PROTOCOL_VERSION);
+    CDataStream ssBlock(blockData, SER_NETWORK, ABC_PROTOCOL_VERSION);
     CBlock pblock;
     try {
         ssBlock >> pblock;

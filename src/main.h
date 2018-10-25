@@ -759,7 +759,7 @@ public:
         fileout << *this;
 
         // calculate & write checksum
-        CHashWriter hasher(SER_GETHASH, PROTOCOL_VERSION);
+        CHashWriter hasher(SER_GETHASH, ABC_PROTOCOL_VERSION);
         hasher << hashBlock;
         hasher << *this;
         fileout << hasher.GetHash();
@@ -790,7 +790,7 @@ public:
         }
 
         // Verify checksum
-        CHashWriter hasher(SER_GETHASH, PROTOCOL_VERSION);
+        CHashWriter hasher(SER_GETHASH, ABC_PROTOCOL_VERSION);
         hasher << hashBlock;
         hasher << *this;
         if (hashChecksum != hasher.GetHash())

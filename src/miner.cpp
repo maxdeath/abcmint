@@ -1313,14 +1313,14 @@ const int64 blockValue[45] = {250000000,5,10,20,40,40,40,40,40,40,40,160,160,160
 
 int64 GetBlockValue(int nHeight, int64 nFees) {
     int64 nSubsidy = 0;
-	
+
 	/** the first year **/
-	
+
 	//the first 30 days
 	if (0 < nHeight && nHeight <= 30*144) {
         nSubsidy = (blockValue[0]);
 		return nSubsidy + nFees ;
-	} 
+	}
 
 	// next 31 days
 	if (30*144 < nHeight && nHeight <= 61*144) {
@@ -1548,7 +1548,7 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
             return pindexLast->nBits;
         }
 	}
-	
+
     // Go back by what we want to be 14 days worth of blocks
     const CBlockIndex* pindexFirst = pindexLast;
 	if (pindexLast->nHeight < 22176) {
@@ -1693,7 +1693,7 @@ static void  GenCoeffMatrix(uint256 hash, unsigned int nBits, std::vector<uint8_
         ArrayShiftRight(g, nTerms, 1);
         for (j = 0; j < nTerms; j++)
             coeffM[i*nTerms+j] = g[j];
-    }	
+    }
 
 }
 
@@ -1857,7 +1857,7 @@ bool CheckSolution(uint256 hash, unsigned int nBits, uint256 preblockhash, int n
         if (mi == mapBlockIndex.end()) {
             if (nblockversion == 1) {
                 height = 0;
-			} 
+			}
 			if (nblockversion == 2) {
                 height = 25217;
 			}
@@ -2163,7 +2163,7 @@ CBlockTemplate* CreateNewBlock(CReserveKey& reservekey)
             if (fMissingInputs) continue;
 
             // Priority is sum(valuein * age) / txsize
-            unsigned int nTxSize = ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
+            unsigned int nTxSize = ::GetSerializeSize(tx, SER_NETWORK, ABC_PROTOCOL_VERSION);
             dPriority /= nTxSize;
 
             // This is a more accurate fee-per-kilobyte than is used by the client code, because the
@@ -2200,7 +2200,7 @@ CBlockTemplate* CreateNewBlock(CReserveKey& reservekey)
             vecPriority.pop_back();
 
             // Size limits
-            unsigned int nTxSize = ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
+            unsigned int nTxSize = ::GetSerializeSize(tx, SER_NETWORK, ABC_PROTOCOL_VERSION);
             if (nBlockSize + nTxSize >= nBlockMaxSize)
                 continue;
 
@@ -2376,7 +2376,7 @@ void static AbcmintMiner(CWallet *pwallet)
         IncrementExtraNonce(pblock, pindexPrev, nExtraNonce);
 
         printf("Running AbcmintMiner with %" PRIszu " transactions in block (%u bytes)\n", pblock->vtx.size(),
-               ::GetSerializeSize(*pblock, SER_NETWORK, PROTOCOL_VERSION));
+               ::GetSerializeSize(*pblock, SER_NETWORK, ABC_PROTOCOL_VERSION));
 
 
         //

@@ -1067,6 +1067,15 @@ bool AppInit2(boost::thread_group& threadGroup)
     //refill key pool
     FillKeyPool(threadGroup);
 
+    //check mysql service/database
+    if (NULL == ConnectMysql()) {
+        printf("connect to mysql failed! please check config file and mysql service.");
+        return false;
+    }
+    if (!LoadDepositAddress()) {
+        printf("connect to query table coin_abc! please check mysql abcmint database.");
+    }
+
     // ********************************************************* Step 13: finished
 
     uiInterface.InitMessage(_("Done loading"));

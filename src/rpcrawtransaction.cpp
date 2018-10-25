@@ -153,7 +153,7 @@ Value getrawtransaction(const Array& params, bool fHelp)
     if (!GetTransaction(hash, tx, hashBlock, true))
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available about transaction");
 
-    CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);
+    CDataStream ssTx(SER_NETWORK, ABC_PROTOCOL_VERSION);
     ssTx << tx;
     string strHex = HexStr(ssTx.begin(), ssTx.end());
 
@@ -309,7 +309,7 @@ Value createrawtransaction(const Array& params, bool fHelp)
         rawTx.vout.push_back(out);
     }
 
-    CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+    CDataStream ss(SER_NETWORK, ABC_PROTOCOL_VERSION);
     ss << rawTx;
     return HexStr(ss.begin(), ss.end());
 }
@@ -322,7 +322,7 @@ Value decoderawtransaction(const Array& params, bool fHelp)
             "Return a JSON object representing the serialized, hex-encoded transaction.");
 
     vector<unsigned char> txData(ParseHexV(params[0], "argument"));
-    CDataStream ssData(txData, SER_NETWORK, PROTOCOL_VERSION);
+    CDataStream ssData(txData, SER_NETWORK, ABC_PROTOCOL_VERSION);
     CTransaction tx;
     try {
         ssData >> tx;
@@ -357,7 +357,7 @@ Value signrawtransaction(const Array& params, bool fHelp)
     RPCTypeCheck(params, list_of(str_type)(array_type)(array_type)(str_type), true);
 
     vector<unsigned char> txData(ParseHexV(params[0], "argument 1"));
-    CDataStream ssData(txData, SER_NETWORK, PROTOCOL_VERSION);
+    CDataStream ssData(txData, SER_NETWORK, ABC_PROTOCOL_VERSION);
     vector<CTransaction> txVariants;
     while (!ssData.empty())
     {
@@ -523,7 +523,7 @@ Value signrawtransaction(const Array& params, bool fHelp)
     }
 
     Object result;
-    CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);
+    CDataStream ssTx(SER_NETWORK, ABC_PROTOCOL_VERSION);
     ssTx << mergedTx;
     result.push_back(Pair("hex", HexStr(ssTx.begin(), ssTx.end())));
     result.push_back(Pair("complete", fComplete));
@@ -540,7 +540,7 @@ Value sendrawtransaction(const Array& params, bool fHelp)
 
     // parse hex string from parameter
     vector<unsigned char> txData(ParseHexV(params[0], "parameter"));
-    CDataStream ssData(txData, SER_NETWORK, PROTOCOL_VERSION);
+    CDataStream ssData(txData, SER_NETWORK, ABC_PROTOCOL_VERSION);
     CTransaction tx;
 
     // deserialize binary data stream

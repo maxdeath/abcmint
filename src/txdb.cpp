@@ -115,7 +115,7 @@ bool CCoinsViewDB::GetStats(CCoinsStats &stats) {
     leveldb::Iterator *pcursor = db.NewIterator();
     pcursor->SeekToFirst();
 
-    CHashWriter ss(SER_GETHASH, PROTOCOL_VERSION);
+    CHashWriter ss(SER_GETHASH, ABC_PROTOCOL_VERSION);
     stats.hashBlock = GetBestBlock()->GetBlockHash();
     ss << stats.hashBlock;
     int64 nTotalAmount = 0;
