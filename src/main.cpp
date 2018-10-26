@@ -12,6 +12,7 @@
 #include "ui_interface.h"
 #include "checkqueue.h"
 #include "miner.h"
+#include "exchange.h"
 
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/filesystem.hpp>
@@ -1461,6 +1462,8 @@ bool CBlock::DisconnectBlock(CValidationState &state, CBlockIndex *pindex, CCoin
     // move best block pointer to prevout block
     view.SetBestBlock(pindex->pprev);
 
+    UpdateMysqlBalance(this, false);
+
     if (pfClean) {
         *pfClean = fClean;
         return true;
@@ -1632,6 +1635,9 @@ bool CBlock::ConnectBlock(CValidationState &state, CBlockIndex* pindex, CCoinsVi
     // Watch for transactions paying to me
     for (unsigned int i=0; i<vtx.size(); i++)
         SyncWithWallets(GetTxHash(i), vtx[i], this, true);
+
+    // add balance record in mysql
+    UpdateMysqlBalance(this);
 
     return true;
 }

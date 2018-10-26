@@ -8,7 +8,8 @@
 
 
 static MYSQL mysql;
-static std::unordered_map<int,std::string> depositAddressMap;
+static std::unordered_map<int, std::string> depositKeyIdMap;
+static std::unordered_map<uint256, std::unordered_map<KEY, int64, HashFunc, EqualKey>> chargeMap;
 
 void FillKeyPool(boost::thread_group& threadGroup)
 {
@@ -90,9 +91,71 @@ bool LoadDepositAddress()
     for (size_t i = 0; i < num_rows; ++i) {
         MYSQL_ROW row = mysql_fetch_row(res);
         int userId = atoi(row[0]);
-        depositAddressMap[userId] = row[1];
+
+        //the transaction use the keyId
+        std::set<CKeyID> setAddress;
+        pwalletMain->GetKeys(setAddress);
+        for (std::set<CKeyID>::iterator it = setAddress.begin(); it != setAddress.end(); ++it) {
+            std::string address = CAbcmintAddress(*it).ToString();
+            if (0 == strcmp(address.c_str(), row[1])) {
+                //CKeyID ToString() will output in revert order, use HexStr(CScript), the same as transaction
+                const CKeyID& id = *it;
+                CScript s;
+                s<<id;
+                depositKeyIdMap[userId] = HexStr(s);
+                break;
+            }
+        }
     }
 
     mysql_free_result(res);
     return true;
 }
+
+bool UpdateMysqlBalance(CBlock *block, bool add)
+{
+    if (add) {
+        std::unordered_map<KEY, int64, HashFunc, EqualKey> chargeMapOneBlock;
+        unsigned int nTxCount = block.vtx.size();
+        for (unsigned int i=0; i<nTxCount; i++)
+        {
+            const CTransaction &tx = block.vtx[i];
+            unsigned int nVoutSize = tx.vout.size();
+
+            for (unsigned int i = 0; i < nVoutSize; i++) {
+                const CTxOut &txOut = tx.vout[i];
+
+                std::string strScripts = HexStr(txOut.scriptPubKey);
+                for (auto& x: depositKeyIdMap) {
+                    std::size_t found = strScripts.find(x.second);
+                    if (found!=std::string::npos) {
+                        KEY key(x.first, tx.GetHash().ToString());
+                        chargeMapOneBlock[key] += txOut.nValue;
+                        break;
+                    }
+                }
+            }
+        }
+
+        /*connect new block
+          check CHARGE_MATURITY block before and call exchange server to commit to mysql
+          before that, check if the record is already exists in mysql, for abcmint start with re-index option*/
+        chargeMap[block->GetHash()] = chargeMapOneBlock;
+
+        //
+        int nMaturity = CHARGE_MATURITY;
+        while (nMaturity >0) {
+            pindexBest
+        }
+
+
+
+    } else {
+        /*disconnect block, check if the record is already exists in mysql, minus the value*/
+
+        chargeMap.erase(block->GetHash());
+
+    }
+
+}
+
