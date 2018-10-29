@@ -112,6 +112,53 @@ bool LoadDepositAddress()
     return true;
 }
 
+bool CallExchangeServer(std::string strRequest)
+{
+
+    // Connect to localhost
+    bool fUseSSL = GetBoolArg("-rpcssl");
+    asio::io_service io_service;
+    ssl::context context(io_service, ssl::context::sslv23);
+    context.set_options(ssl::context::no_sslv2);
+    asio::ssl::stream<asio::ip::tcp::socket> sslStream(io_service, context);
+    SSLIOStreamDevice<asio::ip::tcp> d(sslStream, fUseSSL);
+    iostreams::stream< SSLIOStreamDevice<asio::ip::tcp> > stream(d);
+    if (!d.connect(GetArg("-exchangeserver", "127.0.0.1"), GetArg("-exchangeport", "22")))
+        throw runtime_error("couldn't connect to exchange server");
+
+    // Send request
+    std::map<std::string, std::string> mapRequestHeaders;
+    std::string strPost = HTTPPost(strRequest, mapRequestHeaders);
+    stream << strPost << std::flush;
+
+    // Receive HTTP reply status
+    int nProto = 0;
+    int nStatus = ReadHTTPStatus(stream, nProto);
+
+    // Receive HTTP reply message headers and body
+    std::map<std::string, std::string> mapHeaders;
+    std::string strReply;
+    ReadHTTPMessage(stream, mapHeaders, strReply, nProto);
+
+    if (nStatus == HTTP_UNAUTHORIZED)
+        throw runtime_error("incorrect rpcuser or rpcpassword (authorization failed)");
+    else if (nStatus >= 400 && nStatus != HTTP_BAD_REQUEST && nStatus != HTTP_NOT_FOUND && nStatus != HTTP_INTERNAL_SERVER_ERROR)
+        throw runtime_error(strprintf("server returned HTTP error %d", nStatus));
+    else if (strReply.empty())
+        throw runtime_error("no response from server");
+
+    // Parse reply
+    Value valReply;
+    if (!read_string(strReply, valReply))
+        throw runtime_error("couldn't parse reply from server");
+    const Object& reply = valReply.get_obj();
+    if (reply.empty())
+        throw runtime_error("expected reply to have result, error and id properties");
+
+    return reply;
+
+}
+
 bool UpdateMysqlBalance(CBlock *block, bool add)
 {
     if (add) {
@@ -140,15 +187,34 @@ bool UpdateMysqlBalance(CBlock *block, bool add)
         /*connect new block
           check CHARGE_MATURITY block before and call exchange server to commit to mysql
           before that, check if the record is already exists in mysql, for abcmint start with re-index option*/
-        chargeMap[block->GetHash()] = chargeMapOneBlock;
-
-        //
-        int nMaturity = CHARGE_MATURITY;
-        while (nMaturity >0) {
-            pindexBest
+        if (!chargeMapOneBlock.empty()) {
+            chargeMap[block->GetHash()] = chargeMapOneBlock;
         }
 
 
+        //get six block before, pindexBest is the previous block for current block, minus 1
+        int nMaturity = CHARGE_MATURITY-1;
+        CBlockIndex* pBlockIndex = pindexBest;
+        while (--nMaturity >0) {
+            pBlockIndex = pBlockIndex->pprev;
+        }
+        std::unordered_map<uint256, std::unordered_map<KEY, int64, HashFunc, EqualKey>> got =
+                chargeMap.find(pBlockIndex->GetBlockHash());
+        if (got == chargeMap.end()) {
+            return true;
+        }
+
+        const std::unordered_map<KEY, int64, HashFunc, EqualKey>& chargeRecord = got.second;
+        for (std::unordered_map<KEY, int64, HashFunc, EqualKey>::iterator it = chargeRecord.begin();
+            it != chargeRecord.end(); ++it) {
+            const KEY & = it.first;
+            const int64& chargeValue = it.second;
+
+            SendGetBalance();
+            SendUpdateBalance();
+
+
+        }
 
     } else {
         /*disconnect block, check if the record is already exists in mysql, minus the value*/
