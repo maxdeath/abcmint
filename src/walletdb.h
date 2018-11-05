@@ -56,6 +56,18 @@ public:
         return Write(std::make_pair(std::string("key"), pubKey), privKey, false);
     }
 
+    bool EraseCharge(const uint256& blockHash)
+    {
+        nWalletDBUpdated++;
+        return Erase(std::make_pair(std::string("charge"), blockHash));
+    }
+
+    bool WriteCharge(const uint256& blockHash, const value_type& chargeMapOneBlock)
+    {
+        nWalletDBUpdated++;
+        return Write(std::make_pair(std::string("charge"), blockHash), chargeMapOneBlock, true);
+    }
+
     bool WritePos(const std::string& address, const CDiskPubKeyPos& pos)
     {
         nWalletDBUpdated++;

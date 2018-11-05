@@ -9,8 +9,6 @@
 #include "ui_interface.h"
 #include "base58.h"
 #include <boost/algorithm/string/replace.hpp>
-#include "exchange.h"
-
 using namespace std;
 
 
@@ -49,6 +47,18 @@ bool CWallet::AddKey(const CKey& key)
     return true;
 }
 
+bool CWallet::AddChargeRecordInOneBlock(const uint256& blockHash, const value_type& chargeMapOneBlock)
+{
+    LOCK(cs_wallet);
+    return CWalletDB(strWalletFile).WriteCharge(blockHash, chargeMapOneBlock);
+}
+
+bool CWallet::DeleteChargeRecordInOneBlock(const uint256& blockHash)
+{
+    LOCK(cs_wallet);
+    return CWalletDB(strWalletFile).EraseCharge(blockHash);
+}
+
 bool CWallet::AddPubKeyPos(const string& address, const CDiskPubKeyPos& pos)
 {
     LOCK(cs_wallet);
@@ -57,6 +67,7 @@ bool CWallet::AddPubKeyPos(const string& address, const CDiskPubKeyPos& pos)
 
     return CWalletDB(strWalletFile).WritePos(address, pos);
 }
+
 
 bool CWallet::AddCryptedKey(const CPubKey &vchPubKey, const vector<unsigned char> &vchCryptedSecret)
 {

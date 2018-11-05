@@ -794,7 +794,88 @@ bool AppInit2(boost::thread_group& threadGroup)
     BOOST_FOREACH(string strDest, mapMultiArgs["-seednode"])
         AddOneShot(strDest);
 
+    // ********************************************************* Step 8: load wallet
+
+    uiInterface.InitMessage(_("Loading wallet..."));
+
+    nStart = GetTimeMillis();
+    bool fFirstRun = true;
+    pwalletMain = new CWallet("wallet.dat");
+    DBErrors nLoadWalletRet = pwalletMain->LoadWallet(fFirstRun);
+    if (nLoadWalletRet != DB_LOAD_OK)
+    {
+        if (nLoadWalletRet == DB_CORRUPT)
+            strErrors << _("Error loading wallet.dat: Wallet corrupted") << "\n";
+        else if (nLoadWalletRet == DB_NONCRITICAL_ERROR)
+        {
+            string msg(_("Warning: error reading wallet.dat! All keys read correctly, but transaction data"
+                         " or address book entries might be missing or incorrect."));
+            InitWarning(msg);
+        }
+        else if (nLoadWalletRet == DB_TOO_NEW)
+            strErrors << _("Error loading wallet.dat: Wallet requires newer version of Abcmint") << "\n";
+        else if (nLoadWalletRet == DB_NEED_REWRITE)
+        {
+            strErrors << _("Wallet needed to be rewritten: restart Abcmint to complete") << "\n";
+            printf("%s", strErrors.str().c_str());
+            return InitError(strErrors.str());
+        }
+        else
+            strErrors << _("Error loading wallet.dat") << "\n";
+    }
+
+    if (GetBoolArg("-upgradewallet", fFirstRun))
+    {
+        int nMaxVersion = GetArg("-upgradewallet", 0);
+        if (nMaxVersion == 0) // the -upgradewallet without argument case
+        {
+            printf("Performing wallet upgrade to %i\n", FEATURE_LATEST);
+            nMaxVersion = CLIENT_VERSION;
+            pwalletMain->SetMinVersion(FEATURE_LATEST); // permanently upgrade the wallet immediately
+        }
+        else
+            printf("Allowing wallet upgrade up to %i\n", nMaxVersion);
+        if (nMaxVersion < pwalletMain->GetVersion())
+            strErrors << _("Cannot downgrade wallet") << "\n";
+        pwalletMain->SetMaxVersion(nMaxVersion);
+    }
+
+    if (fFirstRun)
+    {
+        // Create new keyUser and set as default key
+
+        CPubKey newDefaultKey;
+        if (pwalletMain->GetKeyFromPool(newDefaultKey, true)) {
+            pwalletMain->SetDefaultKey(newDefaultKey);
+            if (!pwalletMain->SetAddressBookName(pwalletMain->vchDefaultKey.GetID(), "default"))
+                strErrors << _("Cannot write default address") << "\n";
+        }
+
+        pwalletMain->SetBestChain(CBlockLocator(pindexBest));
+    }
+
+    printf("%s", strErrors.str().c_str());
+    printf(" wallet      %15" PRI64d "ms\n", GetTimeMillis() - nStart);
+
+    RegisterWallet(pwalletMain);
+
     // ********************************************************* Step 7: load block chain
+
+    /*check mysql connection(and load the address) before start node and re-index, because:
+      1, after start node, will accept new block from network, need to calculate deposit, see the function StartNode()
+      2, when import block, will accept block also, see ThreadImport
+    */
+
+    //check mysql service/database
+    if (NULL == ConnectMysql()) {
+        printf("connect to mysql failed! please check config file and mysql service.\n");
+        return false;
+    }
+    if (!LoadDepositAddress()) {
+        printf("connect to query table coin_abc! please check mysql abcmint database.\n");
+        strErrors << "connect to query table coin_abc";
+        return false;
+    }
 
     fReindex = GetBoolArg("-reindex");
     filesystem::path blocksDir = GetDataDir() / "blocks";
@@ -921,70 +1002,6 @@ bool AppInit2(boost::thread_group& threadGroup)
         return false;
     }
 
-    // ********************************************************* Step 8: load wallet
-
-    uiInterface.InitMessage(_("Loading wallet..."));
-
-    nStart = GetTimeMillis();
-    bool fFirstRun = true;
-    pwalletMain = new CWallet("wallet.dat");
-    DBErrors nLoadWalletRet = pwalletMain->LoadWallet(fFirstRun);
-    if (nLoadWalletRet != DB_LOAD_OK)
-    {
-        if (nLoadWalletRet == DB_CORRUPT)
-            strErrors << _("Error loading wallet.dat: Wallet corrupted") << "\n";
-        else if (nLoadWalletRet == DB_NONCRITICAL_ERROR)
-        {
-            string msg(_("Warning: error reading wallet.dat! All keys read correctly, but transaction data"
-                         " or address book entries might be missing or incorrect."));
-            InitWarning(msg);
-        }
-        else if (nLoadWalletRet == DB_TOO_NEW)
-            strErrors << _("Error loading wallet.dat: Wallet requires newer version of Abcmint") << "\n";
-        else if (nLoadWalletRet == DB_NEED_REWRITE)
-        {
-            strErrors << _("Wallet needed to be rewritten: restart Abcmint to complete") << "\n";
-            printf("%s", strErrors.str().c_str());
-            return InitError(strErrors.str());
-        }
-        else
-            strErrors << _("Error loading wallet.dat") << "\n";
-    }
-
-    if (GetBoolArg("-upgradewallet", fFirstRun))
-    {
-        int nMaxVersion = GetArg("-upgradewallet", 0);
-        if (nMaxVersion == 0) // the -upgradewallet without argument case
-        {
-            printf("Performing wallet upgrade to %i\n", FEATURE_LATEST);
-            nMaxVersion = CLIENT_VERSION;
-            pwalletMain->SetMinVersion(FEATURE_LATEST); // permanently upgrade the wallet immediately
-        }
-        else
-            printf("Allowing wallet upgrade up to %i\n", nMaxVersion);
-        if (nMaxVersion < pwalletMain->GetVersion())
-            strErrors << _("Cannot downgrade wallet") << "\n";
-        pwalletMain->SetMaxVersion(nMaxVersion);
-    }
-
-    if (fFirstRun)
-    {
-        // Create new keyUser and set as default key
-
-        CPubKey newDefaultKey;
-        if (pwalletMain->GetKeyFromPool(newDefaultKey, true)) {
-            pwalletMain->SetDefaultKey(newDefaultKey);
-            if (!pwalletMain->SetAddressBookName(pwalletMain->vchDefaultKey.GetID(), "default"))
-                strErrors << _("Cannot write default address") << "\n";
-        }
-
-        pwalletMain->SetBestChain(CBlockLocator(pindexBest));
-    }
-
-    printf("%s", strErrors.str().c_str());
-    printf(" wallet      %15" PRI64d "ms\n", GetTimeMillis() - nStart);
-
-    RegisterWallet(pwalletMain);
 
     CBlockIndex *pindexRescan = pindexBest;
     if (GetBoolArg("-rescan"))
@@ -1063,19 +1080,10 @@ bool AppInit2(boost::thread_group& threadGroup)
     GenerateAbcmints(GetBoolArg("-gen", false), pwalletMain);
 
     //seach block position for public key  in the background
-    SearchPubKeyPos(GetBoolArg("-search", true));
+    //SearchPubKeyPos(GetBoolArg("-search", true));
 
     //refill key pool
     FillKeyPool(threadGroup);
-
-    //check mysql service/database
-    if (NULL == ConnectMysql()) {
-        printf("connect to mysql failed! please check config file and mysql service.");
-        return false;
-    }
-    if (!LoadDepositAddress()) {
-        printf("connect to query table coin_abc! please check mysql abcmint database.");
-    }
 
     // ********************************************************* Step 13: finished
 

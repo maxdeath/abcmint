@@ -1637,7 +1637,7 @@ bool CBlock::ConnectBlock(CValidationState &state, CBlockIndex* pindex, CCoinsVi
         SyncWithWallets(GetTxHash(i), vtx[i], this, true);
 
     // add balance record in mysql
-    UpdateMysqlBalance(this);
+    UpdateMysqlBalance(this, true);
 
     return true;
 }

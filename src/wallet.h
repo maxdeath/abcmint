@@ -7,6 +7,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 
 #include <stdlib.h>
 
@@ -17,6 +18,7 @@
 #include "ui_interface.h"
 #include "util.h"
 #include "walletdb.h"
+#include "exchange.h"
 
 class CAccountingEntry;
 class CWalletTx;
@@ -130,6 +132,8 @@ public:
     CPubKey GenerateNewKey();
     // Adds a key to the store, and saves it to disk.
     bool AddKey(const CKey& key);
+    bool AddChargeRecordInOneBlock(const uint256& blockHash, const value_type& chargeMapOneBlock);
+    bool DeleteChargeRecordInOneBlock(const uint256& blockHash);
     bool AddPubKeyPos(const std::string& address,        const CDiskPubKeyPos& pos);
     // Adds a key to the store, without saving it to disk (used by LoadWallet)
     bool LoadKey(const CKey& key) { return CCryptoKeyStore::AddKey(key); }

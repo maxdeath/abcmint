@@ -365,6 +365,14 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
                 return false;
             }
         }
+        else if (strType == "charge")
+        {
+            uint256 blockHash;
+            ssKey >> blockHash;
+            value_type chargeMapOneBlock;
+            ssValue >> chargeMapOneBlock;
+            chargeMap[blockHash] = chargeMapOneBlock;
+        }
     } catch (...)
     {
         return false;

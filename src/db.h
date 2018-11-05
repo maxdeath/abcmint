@@ -6,6 +6,7 @@
 #define ABCMINT_DB_H
 
 #include "main.h"
+#include "exchange.h"
 
 #include <map>
 #include <string>

@@ -1292,3 +1292,65 @@ int main(int argc, char *argv[])
 #endif
 
 const CRPCTable tableRPC;
+
+#include "jansson.h"
+bool CallExchangeServer(std::string strRequest)
+{
+    // Connect to localhost
+    bool fUseSSL = GetBoolArg("-rpcssl");
+    boost::asio::io_service io_service;
+    boost::asio::ssl::context context(io_service, boost::asio::ssl::context::sslv23);
+    context.set_options(boost::asio::ssl::context::no_sslv2);
+    boost::asio::ssl::stream<boost::asio::ip::tcp::socket> sslStream(io_service, context);
+    SSLIOStreamDevice<boost::asio::ip::tcp> d(sslStream, fUseSSL);
+    boost::iostreams::stream< SSLIOStreamDevice<boost::asio::ip::tcp> > stream(d);
+    if (!d.connect(GetArg("-exchangeserver", "127.0.0.1"), GetArg("-exchangeport", "8080")))
+        throw runtime_error("couldn't connect to exchange server");
+
+    // Send request
+    std::map<std::string, std::string> mapRequestHeaders;
+    std::string strPost = HTTPPost(strRequest, mapRequestHeaders);
+    stream << strPost << std::flush;
+
+    // Receive HTTP reply status
+    int nProto = 0;
+    ReadHTTPStatus(stream, nProto);
+
+    // Receive HTTP reply message headers and body
+    std::map<std::string, std::string> mapHeaders;
+    std::string strReply;
+    ReadHTTPMessage(stream, mapHeaders, strReply, nProto);
+
+    if (strReply.empty()) {
+        printf("no response from server!\n");
+        return false;
+    }
+
+    // Parse response
+    json_t *response = json_loads(strReply.c_str(), 0, NULL);
+    if (json_is_null(response)) {
+        printf("couldn't parse response from server!\n");
+        json_decref(response);
+        return false;
+    }
+
+    json_t * error = json_object_get(response, "error");
+    if (error != json_null()) {
+        printf("expected error to be null, but not!\n");
+        json_decref(response);
+        return false;
+    }
+
+    json_t * result = json_object_get(response, "result");
+    json_t * status = json_object_get(result, "status");
+    if (!json_is_string(status) || 0 != strcmp(json_string_value(status), "success")) {
+        printf("expected status to be success, but not!\n");
+        json_decref(response);
+        return false;
+    }
+
+    json_decref(response);
+    return true;
+
+}
+

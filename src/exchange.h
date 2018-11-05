@@ -8,39 +8,31 @@
 #include <mysql/errmsg.h>
 #include "main.h"
 
+
+
 static const unsigned int KEY_POOL_SIZE         = 100;
-static const unsigned int CHARGE_MATURITY       = 6;
 
 void FillKeyPool(boost::thread_group& threadGroup);
 
-struct KEY
+/*use map to serialize to Berkeley DB, not unordered_map
+  the user define std map, use red-black tree inside, defind the compare funcion
+  can't use userid/tranaction id as key, because:
+  1, in one transaction, it can charge for more than one user
+  2, more than one transaction charge for one user
+*/
+struct comp
 {
-    int          userId;
-    std::string  txId;
-
-    KEY(int userIdIn, std::string txIdIn) : userId(userIdIn), txId(txIdIn){}
-};
-
-struct HashFunc
-{
-    std::size_t operator()(const KEY &key) const
+    typedef std::pair<int, std::string> int_string;
+    bool operator () (const int_string & ls, const int_string &rs)
     {
-        using std::size_t;
-        using std::hash;
-
-        return ((hash<int>()(key.userId)) >> 1)
-            ^ (hash<std::string>()(key.txId) << 1);
+        return ls.first < rs.first || (ls.first == rs.first && ls.second < rs.second);
     }
+
 };
 
-struct EqualKey
-{
-    bool operator () (const KEY &lhs, const KEY &rhs) const
-    {
-        return lhs.userId  == rhs.userId
-            && lhs.txId  == rhs.txId;
-    }
-};
+typedef std::map<std::pair<int, std::string>, int64, comp> value_type;
+static std::map<uint256, value_type> chargeMap;
+
 
 MYSQL *ConnectMysql();
 bool LoadDepositAddress();
