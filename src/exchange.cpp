@@ -22,11 +22,10 @@ static const char*        BALANCE_BUSINESS      = "deposit";
 static MYSQL mysql;
 static std::map<int, std::string> depositKeyIdMap;
 
-
-void FillKeyPool(boost::thread_group& threadGroup)
+void KeyPoolFiller()
 {
-    printf("exchange, FillKeyPool started\n");
-    RenameThread("FillKeyPool");
+    printf("exchange, KeyPoolFiller started\n");
+    RenameThread("KeyPoolFiller");
     SetThreadPriority(THREAD_PRIORITY_NORMAL);
 
     unsigned int nTargetSize = GetArg("-keypool", KEY_POOL_SIZE);
@@ -34,13 +33,12 @@ void FillKeyPool(boost::thread_group& threadGroup)
         while (true) {
             if (pwalletMain->setKeyPool.size() < nTargetSize/2) {
                 if (pwalletMain->IsLocked()) {
-                    //getnewaddress will return new address, but will timeout
+                    //getnewaddress will return new address, but maybe timeout
                     //consider how to handle this error
                     printf("error: please unlock the wallet for key pool filling!\n");
                 }
                 pwalletMain->TopUpKeyPool(true);
 
-                //MilliSleep(3*1000);//sleep a little while and check if the key pool is used out, 10 seconds
             } else
                 MilliSleep(10*1000);//sleep a loog while if the key pool still have a lot, 10 minutes
         }
@@ -50,6 +48,12 @@ void FillKeyPool(boost::thread_group& threadGroup)
         printf("exchange, FillKeyPool terminated\n");
         throw;
     }
+}
+
+void FillKeyPool(boost::thread_group& threadGroup)
+{
+    //use boost thread group, so that this thread can exit together with other thread when press ctrl+c
+    threadGroup.create_thread(boost::bind(&KeyPoolFiller));
 }
 
 
@@ -122,7 +126,7 @@ bool LoadDepositAddress()
         address.GetKeyID(keyID);
         CScript s;
         s<<keyID;
-        printf("exchange, depositKeyIdMap add userId:%d, row[1]:%s, address:%s, keyId:%s\n", userId, row[1], address.ToString().c_str(), HexStr(s).c_str());
+        //printf("exchange, depositKeyIdMap add userId:%d, row[1]:%s, address:%s, keyId:%s\n", userId, row[1], address.ToString().c_str(), HexStr(s).c_str());
         depositKeyIdMap[userId] = HexStr(s);
     }
 
@@ -241,7 +245,7 @@ bool UpdateMysqlBalance(CBlock *block, bool add)
                 printf("exchange, connect new block %s failed, add charge record to berkeley db return false!\n", block->GetHash().ToString().c_str());
                 return false;
             }
-            printf("exchange, add block %s to chargeMap\n", block->GetHash().ToString().c_str());
+            /*printf("exchange, add block %s to chargeMap\n", block->GetHash().ToString().c_str());*/
             chargeMap[block->GetHash()] = chargeMapOneBlock;
         }
 
@@ -260,8 +264,9 @@ bool UpdateMysqlBalance(CBlock *block, bool add)
             return true;
         }
 
-        printf("exchange, find block %s height:%d in chargeMap to call via server\n", pBlockIndex->GetBlockHash().ToString().c_str(),
-        pBlockIndex->nHeight);
+
+        /*printf("exchange, find block %s height:%d in chargeMap to call via server\n",
+                pBlockIndex->GetBlockHash().ToString().c_str(), pBlockIndex->nHeight);*/
 
         const value_type& chargeRecord = got->second;
         for (value_type::const_iterator it = chargeRecord.begin(); it != chargeRecord.end(); ++it) {
@@ -273,13 +278,13 @@ bool UpdateMysqlBalance(CBlock *block, bool add)
             int cnt = GetBalanceHistory(userId, txId);
             if (0 == cnt) {
                 if (!SendUpdateBalance(userId, txId, chargeValue, add)) {
-                    printf("exchange, SendUpdateBalance failed, cnt:%d, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
-                        cnt, userId, txId.c_str(), chargeValue, add?"true":"false");
+                    /*printf("exchange, SendUpdateBalance failed, cnt:%d, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
+                        cnt, userId, txId.c_str(), chargeValue, add?"true":"false");*/
                     return false;
                 }
             } else {
-                printf("exchange, GetBalanceHistory return %d, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
-                        cnt, userId, txId.c_str(), chargeValue, add?"true":"false");
+                /*printf("exchange, GetBalanceHistory return %d, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
+                        cnt, userId, txId.c_str(), chargeValue, add?"true":"false");*/
                 continue;
             }
         }
@@ -301,17 +306,15 @@ bool UpdateMysqlBalance(CBlock *block, bool add)
             int cnt = GetBalanceHistory(userId, txId);
             if (0 != cnt) {
                 if (!SendUpdateBalance(userId, txId, chargeValue, add)) {
-                    printf("exchange, SendUpdateBalance failed, cnt:%d, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
-                        cnt, userId, txId.c_str(), chargeValue, add?"true":"false");
+                    /*printf("exchange, SendUpdateBalance failed, cnt:%d, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
+                        cnt, userId, txId.c_str(), chargeValue, add?"true":"false");*/
                     return false;
                 }
             } else {
-                printf("exchange, GetBalanceHistory return %d, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
-                        cnt, userId, txId.c_str(), chargeValue, add?"true":"false");
+                /*printf("exchange, GetBalanceHistory return %d, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
+                        cnt, userId, txId.c_str(), chargeValue, add?"true":"false");*/
                 continue;
             }
-
-
         }
 
         if (!pwalletMain->DeleteChargeRecordInOneBlock(block->GetHash())) {
