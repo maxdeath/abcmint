@@ -8,6 +8,9 @@
 
 #include <string>
 #include <map>
+#include <vector>
+#include <algorithm>
+
 
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
@@ -20,7 +23,7 @@ static const char*        BALANCE_ASSET         = "ABC";
 static const char*        BALANCE_BUSINESS      = "deposit";
 
 static MYSQL mysql;
-static std::map<int, std::string> depositKeyIdMap;
+static std::map<unsigned int, std::string> depositKeyIdMap;
 
 void KeyPoolFiller()
 {
@@ -117,7 +120,7 @@ bool LoadDepositAddress()
     size_t num_rows = mysql_num_rows(res);
     for (size_t i = 0; i < num_rows; ++i) {
         MYSQL_ROW row = mysql_fetch_row(res);
-        int userId = atoi(row[0]);
+        unsigned int userId = strtoul(row[0], NULL, 10);
 
         //transaction to keyId
         CAbcmintAddress address;
@@ -134,40 +137,117 @@ bool LoadDepositAddress()
     return true;
 }
 
-size_t GetBalanceHistory(const int userId, const std::string& txId)
+/*the business_id should be use to identify the charge history, because the block can be connect-disconnect-reconnect.
+one case below, A is the root block:
+step 1, B/C block come and both link to block A， A-B becomes the best chain, B block will be connect and send charge
+record to exchange server.
+ ___    ___
+|_A_|->|_B_|                <-------- the best chain
+  |     ___
+  |--->|_C_|
+
+step 2, D block comes and links to C block, A-C-D becomes the best chain, B would be disconnect, C and D would be
+connect and send charge record to exchange server.
+ ___    ___
+|_A_|->|_B_|
+  |     ___    ___
+  |--->|_C_|->|_D_|         <-------- the best chain
+
+step3, E and F block comes and connect to block B, A-B-E-F becomes the best chain. B will be reconnect, but if
+business_id is not used, we can't identify the charge history, and the charge record in B won't be send to exchange
+server.
+ ___    ___    ___    ___
+|_A_|->|_B_|->|_E_|->|_F_|  <-------- the best chain
+  |     ___    ___
+  |--->|_C_|->|_D_|
+
+
+*/
+bool GetBalanceHistory(const unsigned int userId, const std::string& txId, int64& chargeBusinessId)
 {
     char useStmt[32];
     sprintf(useStmt, "use trade_history");
     int ret = mysql_query(&mysql, useStmt);
     if(ret != 0) {
-        printf("exchange, Query failed (%s)\n",mysql_error(&mysql));
+        printf("exchange, GetBalanceHistory Query failed (%s)\n",mysql_error(&mysql));
         return false;
     }
 
     char query[256];
-    sprintf(query, "select * from `balance_history_%u` WHERE `user_id` = %u and `detail` like '%%%s%%'",
+    sprintf(query, "select * from `balance_history_%u` A WHERE `A.user_id` = %u and `A.detail` like '%%%s%%'",
             userId % HISTORY_TABLE_COUNT, userId, txId.c_str());
     ret = mysql_query(&mysql, query);
     if(ret != 0) {
-        printf("exchange, Query failed (%s)\n",mysql_error(&mysql));
+        printf("exchange, GetBalanceHistory Query failed (%s)\n",mysql_error(&mysql));
         return false;
     }
 
     MYSQL_RES *res;
     if (!(res=mysql_store_result(&mysql)))
     {
-        printf("exchange, Couldn't get result from %s\n", mysql_error(&mysql));
+        printf("exchange, GetBalanceHistory Couldn't get result from %s\n", mysql_error(&mysql));
         return false;
     }
 
-    return mysql_num_rows(res);
+    std::vector<int64> vConnect;
+    std::vector<int64> vDisconnect;
+    size_t num_rows = mysql_num_rows(res);
+    for (size_t i = 0; i < num_rows; ++i) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+
+        json_t *detail = json_loads(row[7], 0, NULL);
+        if (!detail) {
+            printf("exchange, GetBalanceHistory invalid balance history record : %s\n", row[7]);
+            return false;
+        }
+
+        //if find disconnect block, ignore the id
+        json_t * disconnect_business_id = json_object_get("disconnect");
+        if (json_is_integer(disconnect_business_id)) {
+            int64 disconnectBusinessId = json_integer_value(disconnect_business_id);
+            vDisconnect.push_back(disconnectBusinessId);
+            json_decref(detail);
+            continue;
+        }
+
+        //no disconnect detail, means connect block
+        json_t * connect_business_id = json_object_get("id");
+        if (json_is_integer(connect_business_id)) {
+            int64 connectBusinessId = json_integer_value(connect_business_id);
+            vConnect.push_back(connectBusinessId);
+        }
+
+        json_decref(detail);
+    }
+
+    unsigned int connectCount = vConnect.size();
+    unsigned int disconnectCount = vDisconnect.size();
+    for ( auto itr=vConnect.begin(); itr!=vConnect.end(); ) {
+        if ( find(vDisconnect.begin(),vDisconnect.end(),*itr) != vDisconnect.end() ) {
+            itr = vConnect.erase(itr);
+        }
+        else
+        {
+            ++itr;
+        }
+    }
+
+    if (vConnect.size() != 0 || vConnect.size() != 1) {
+        printf("exchange, mysql GetBalanceHistory， balance_history_%u in error state, connect times should be equal
+        or one more time than disconnect, connectCount:%u, disconnectCount:%u, userid:%u\n",
+        userId % HISTORY_TABLE_COUNT, connectCount, disconnectCount, userId);
+        return false;
+    }
+    chargeBusinessId = connectCount.size() == 0 ? 0:vConnect[1];
+    return true;
 }
 
-bool SendUpdateBalance(const int& userId, const std::string& txId, const int64& value, bool add)
+bool SendUpdateBalance(const unsigned int& userId, const std::string& txId, const int64& value,
+                            bool add, const int64& chargeBusinessId)
 {
     //{"id":5,"method":"account.update",params": [1, "BTC", "deposit", 100, "1.2345"]}
     json_t * request = json_object();
-    json_object_set_new(request, "id", json_integer(userId));
+    json_object_set_new(request, "id", json_integer(userId));//json_integer user long long int
     json_object_set_new(request, "method", json_string(UPDATE_COMMAND));
 
     json_t * params = json_array();
@@ -188,6 +268,7 @@ bool SendUpdateBalance(const int& userId, const std::string& txId, const int64& 
 
     // detail
     json_t * detail = json_object();
+    json_object_set_new(detail, "disconnect", json_integer(chargeBusinessId));
     json_object_set_new(detail, "txId", json_string(txId.c_str()));
     json_array_append_new(params, detail);
     json_object_set_new(request, "params", params);
@@ -242,7 +323,8 @@ bool UpdateMysqlBalance(CBlock *block, bool add)
           before that, check if the record is already exists in mysql, for abcmint start with re-index option*/
         if (!chargeMapOneBlock.empty()) {
             if (!pwalletMain->AddChargeRecordInOneBlock(block->GetHash(), chargeMapOneBlock)) {
-                printf("exchange, connect new block %s failed, add charge record to berkeley db return false!\n", block->GetHash().ToString().c_str());
+                printf("exchange, connect new block %s failed, add charge record to berkeley db return false!\n",
+                    block->GetHash().ToString().c_str());
                 return false;
             }
             /*printf("exchange, add block %s to chargeMap\n", block->GetHash().ToString().c_str());*/
@@ -270,21 +352,22 @@ bool UpdateMysqlBalance(CBlock *block, bool add)
 
         const value_type& chargeRecord = got->second;
         for (value_type::const_iterator it = chargeRecord.begin(); it != chargeRecord.end(); ++it) {
-            const std::pair<int, std::string> & pair_value = it->first;
-            const int& userId = pair_value.first;
+            const std::pair<unsigned int, std::string> & pair_value = it->first;
+            const unsigned int& userId = pair_value.first;
             const std::string& txId = pair_value.second;
             const int64& chargeValue = it->second;
 
-            int cnt = GetBalanceHistory(userId, txId);
-            if (0 == cnt) {
-                if (!SendUpdateBalance(userId, txId, chargeValue, add)) {
-                    /*printf("exchange, SendUpdateBalance failed, cnt:%d, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
-                        cnt, userId, txId.c_str(), chargeValue, add?"true":"false");*/
+            int64 chargeBusinessId;
+            if (!GetBalanceHistory(userId, txId, chargeBusinessId)) return false;
+            if (0 == chargeBusinessId) {
+                if (!SendUpdateBalance(userId, txId, chargeValue, add, chargeBusinessId)) {
+                    /*printf("exchange, SendUpdateBalance failed, chargeBusinessId:%lld, userId:%u, txId:%s, chargeValue:%lld, add:%s\n",
+                        chargeBusinessId, userId, txId.c_str(), chargeValue, add?"true":"false");*/
                     return false;
                 }
             } else {
-                /*printf("exchange, GetBalanceHistory return %d, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
-                        cnt, userId, txId.c_str(), chargeValue, add?"true":"false");*/
+                /*printf("exchange, GetBalanceHistory chargeBusinessId %lld, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
+                        chargeBusinessId, userId, txId.c_str(), chargeValue, add?"true":"false");*/
                 continue;
             }
         }
@@ -298,21 +381,22 @@ bool UpdateMysqlBalance(CBlock *block, bool add)
 
         const value_type& chargeRecord = got->second;
         for (value_type::const_iterator it = chargeRecord.begin(); it != chargeRecord.end(); ++it) {
-            const std::pair<int, std::string>& pair_value  = it->first;
-            const int& userId = pair_value.first;
+            const std::pair<unsigned int, std::string>& pair_value  = it->first;
+            const unsigned int& userId = pair_value.first;
             const std::string& txId = pair_value.second;
             const int64& chargeValue = it->second;
 
-            int cnt = GetBalanceHistory(userId, txId);
-            if (0 != cnt) {
-                if (!SendUpdateBalance(userId, txId, chargeValue, add)) {
-                    /*printf("exchange, SendUpdateBalance failed, cnt:%d, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
-                        cnt, userId, txId.c_str(), chargeValue, add?"true":"false");*/
+            int64 chargeBusinessId;
+            if (!GetBalanceHistory(userId, txId, chargeBusinessId)) return false;
+            if (0 != chargeBusinessId) {
+                if (!SendUpdateBalance(userId, txId, chargeValue, add, chargeBusinessId)) {
+                    /*printf("exchange, SendUpdateBalance failed, chargeBusinessId:%lld, userId:%u, txId:%s, chargeValue:%lld, add:%s\n",
+                        chargeBusinessId, userId, txId.c_str(), chargeValue, add?"true":"false");*/
                     return false;
                 }
             } else {
-                /*printf("exchange, GetBalanceHistory return %d, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
-                        cnt, userId, txId.c_str(), chargeValue, add?"true":"false");*/
+                /*printf("exchange, GetBalanceHistory chargeBusinessId: %lld, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
+                        chargeBusinessId, userId, txId.c_str(), chargeValue, add?"true":"false");*/
                 continue;
             }
         }

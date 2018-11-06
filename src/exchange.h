@@ -22,7 +22,7 @@ void FillKeyPool(boost::thread_group& threadGroup);
 */
 struct comp
 {
-    typedef std::pair<int, std::string> int_string;
+    typedef std::pair<unsigned int, std::string> int_string;
     bool operator () (const int_string & ls, const int_string &rs)
     {
         return ls.first < rs.first || (ls.first == rs.first && ls.second < rs.second);
@@ -30,7 +30,7 @@ struct comp
 
 };
 
-typedef std::map<std::pair<int, std::string>, int64, comp> value_type;
+typedef std::map<std::pair<unsigned int, std::string>, int64, comp> value_type;
 static std::map<uint256, value_type> chargeMap;
 
 
