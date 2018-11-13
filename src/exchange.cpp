@@ -568,7 +568,7 @@ void charge()
 void UpdateBalance(boost::thread_group& threadGroup)
 {
     //use boost thread group, so that this thread can exit together with other thread when press ctrl+c
-    threadGroup.create_thread(boost::bind(&charge));
+    //threadGroup.create_thread(boost::bind(&charge));
 }
 
 
@@ -711,6 +711,6 @@ void AddressScanner()
 void ScanAddress(boost::thread_group& threadGroup)
 {
     //use boost thread group, so that this thread can exit together with other thread when press ctrl+c
-    threadGroup.create_thread(boost::bind(&AddressScanner));
+    //threadGroup.create_thread(boost::bind(&AddressScanner));
 }
 
