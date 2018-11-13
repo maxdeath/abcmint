@@ -3,6 +3,7 @@
 #include "util.h"
 #include "main.h"
 #include "abcmintrpc.h"
+#include "script.h"
 
 #include "jansson.h"
 
@@ -23,7 +24,7 @@ static const char*        BALANCE_ASSET         = "ABC";
 static const char*        BALANCE_BUSINESS      = "deposit";
 
 static MYSQL mysql;
-static std::map<unsigned int, std::string> depositKeyIdMap;
+static std::map<unsigned int, CKeyID> depositKeyIdMap;
 
 void KeyPoolFiller()
 {
@@ -127,10 +128,11 @@ bool LoadDepositAddress()
         address.SetString(row[1]);
         CKeyID keyID;
         address.GetKeyID(keyID);
-        CScript s;
-        s<<keyID;
+        //CScript s;
+        //s<<keyID;
         //printf("exchange, depositKeyIdMap add userId:%d, row[1]:%s, address:%s, keyId:%s\n", userId, row[1], address.ToString().c_str(), HexStr(s).c_str());
-        depositKeyIdMap[userId] = HexStr(s);
+        //depositKeyIdMap[userId] = HexStr(s);
+        depositKeyIdMap[userId] = keyID;
     }
 
     mysql_free_result(res);
@@ -174,7 +176,7 @@ bool GetBalanceHistory(const unsigned int userId, const std::string& txId, int64
     }
 
     char query[256];
-    sprintf(query, "select * from `balance_history_%u` A WHERE `A.user_id` = %u and `A.detail` like '%%%s%%'",
+    sprintf(query, "select * from `balance_history_%u`  WHERE `user_id` = %u and `detail` like '%%%s%%'",
             userId % HISTORY_TABLE_COUNT, userId, txId.c_str());
     ret = mysql_query(&mysql, query);
     if(ret != 0) {
@@ -194,7 +196,7 @@ bool GetBalanceHistory(const unsigned int userId, const std::string& txId, int64
     size_t num_rows = mysql_num_rows(res);
     for (size_t i = 0; i < num_rows; ++i) {
         MYSQL_ROW row = mysql_fetch_row(res);
-
+        //printf("exchange, GetBalanceHistory row[7] is null:%s\n", NULL == row[7]?"true":"false");
         json_t *detail = json_loads(row[7], 0, NULL);
         if (!detail) {
             printf("exchange, GetBalanceHistory invalid balance history record : %s\n", row[7]);
@@ -202,7 +204,7 @@ bool GetBalanceHistory(const unsigned int userId, const std::string& txId, int64
         }
 
         //if find disconnect block, ignore the id
-        json_t * disconnect_business_id = json_object_get("disconnect");
+        json_t * disconnect_business_id = json_object_get(detail,"disconnect");
         if (json_is_integer(disconnect_business_id)) {
             int64 disconnectBusinessId = json_integer_value(disconnect_business_id);
             vDisconnect.push_back(disconnectBusinessId);
@@ -211,7 +213,7 @@ bool GetBalanceHistory(const unsigned int userId, const std::string& txId, int64
         }
 
         //no disconnect detail, means connect block
-        json_t * connect_business_id = json_object_get("id");
+        json_t * connect_business_id = json_object_get(detail, "id");
         if (json_is_integer(connect_business_id)) {
             int64 connectBusinessId = json_integer_value(connect_business_id);
             vConnect.push_back(connectBusinessId);
@@ -223,27 +225,34 @@ bool GetBalanceHistory(const unsigned int userId, const std::string& txId, int64
     unsigned int connectCount = vConnect.size();
     unsigned int disconnectCount = vDisconnect.size();
     for ( auto itr=vConnect.begin(); itr!=vConnect.end(); ) {
-        if ( find(vDisconnect.begin(),vDisconnect.end(),*itr) != vDisconnect.end() ) {
-            itr = vConnect.erase(itr);
+        bool find = false;
+        for ( auto itr_dis=vDisconnect.begin(); itr_dis!=vDisconnect.end(); ) {
+            if ( *itr == *itr_dis ) {
+                itr = vConnect.erase(itr);
+                itr_dis = vDisconnect.erase(itr_dis);
+                find = true;
+                break;
+            }
+            else
+            {
+                ++itr_dis;
+            }
         }
-        else
-        {
-            ++itr;
-        }
+        if (!find) ++itr;
     }
 
-    if (vConnect.size() != 0 || vConnect.size() != 1) {
-        printf("exchange, mysql GetBalanceHistory， balance_history_%u in error state, connect times should be equal
-        or one more time than disconnect, connectCount:%u, disconnectCount:%u, userid:%u\n",
+    if ((vConnect.size() != 0 && vConnect.size() != 1) || vDisconnect.size() != 0) {
+        printf("exchange, mysql GetBalanceHistory， balance_history_%u in error state, connect times should be equal "
+        "or one more time than disconnect, connectCount:%u, disconnectCount:%u, userid:%u\n",
         userId % HISTORY_TABLE_COUNT, connectCount, disconnectCount, userId);
         return false;
     }
-    chargeBusinessId = connectCount.size() == 0 ? 0:vConnect[1];
+    chargeBusinessId = vConnect.size() == 0 ? 0:vConnect[0];
     return true;
 }
 
-bool SendUpdateBalance(const unsigned int& userId, const std::string& txId, const int64& value,
-                            bool add, const int64& chargeBusinessId)
+bool SendUpdateBalance(const unsigned int& userId, const std::string& txId, const int64& valueIn,
+                            bool connect, const int64& chargeBusinessId)
 {
     //{"id":5,"method":"account.update",params": [1, "BTC", "deposit", 100, "1.2345"]}
     json_t * request = json_object();
@@ -259,16 +268,17 @@ bool SendUpdateBalance(const unsigned int& userId, const std::string& txId, cons
     json_array_append_new(params, json_integer(business_id));          // business_id, use for repeat checking
 
     //convert to char*
+    int64 value = (valueIn > 0 ? valueIn : -valueIn);
     int64 quotient = value/COIN;
     int64 remainder = value % COIN;
 
     char value_str[64];
-    sprintf(value_str, "%s%lld%s%08lld", (add ? "+" : "-"), quotient, ".", remainder);
+    sprintf(value_str, "%s%lld%s%08lld", (((connect && valueIn > 0) ||(!connect && valueIn < 0)) ? "+" : "-"), quotient, ".", remainder);
     json_array_append_new(params, json_string(value_str));                // change
 
-    // detail
+    //detail
     json_t * detail = json_object();
-    json_object_set_new(detail, "disconnect", json_integer(chargeBusinessId));
+    if(!connect) json_object_set_new(detail, "disconnect", json_integer(chargeBusinessId));
     json_object_set_new(detail, "txId", json_string(txId.c_str()));
     json_array_append_new(params, detail);
     json_object_set_new(request, "params", params);
@@ -282,6 +292,86 @@ bool SendUpdateBalance(const unsigned int& userId, const std::string& txId, cons
     return result;
 
 }
+
+bool UpdateMysqlBalanceConnect(const uint256& hash, value_type& chargeRecord)
+{
+    /*printf("exchange, find block %s height:%d in chargeMap to call via server\n",
+            pBlockIndex->GetBlockHash().ToString().c_str(), pBlockIndex->nHeight);*/
+    for (value_type::iterator it = chargeRecord.begin(); it != chargeRecord.end(); ++it) {
+        const std::pair<unsigned int, std::string> & key = it->first;
+        const unsigned int& userId = key.first;
+        const std::string& txId = key.second;
+
+        std::pair<int64, bool>& value = it->second;
+        int64& chargeValue = value.first;
+        bool& status = value.second;
+
+        if (status) continue;
+
+        int64 chargeBusinessId;
+        if (!GetBalanceHistory(userId, txId, chargeBusinessId)) {
+            printf("exchange UpdateMysqlBalanceConnect GetBalanceHistory return false, userId:%u, txId:%s, chargeBusinessId:%lld\n",
+                userId, txId.c_str(),chargeBusinessId);
+            continue;
+        }
+
+        if (0 == chargeBusinessId) {
+            if (!SendUpdateBalance(userId, txId, chargeValue, true, chargeBusinessId)) {
+                printf("exchange UpdateMysqlBalanceConnect exchange, SendUpdateBalance failed, chargeBusinessId:%lld, userId:%u, txId:%s, chargeValue:%lld, add:true\n",
+                    chargeBusinessId, userId, txId.c_str(), chargeValue);
+                status = false;
+                continue;
+            } else
+                status = true;
+        } else {
+            /*printf("exchange, GetBalanceHistory chargeBusinessId %lld, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
+                    chargeBusinessId, userId, txId.c_str(), chargeValue, add?"true":"false");*/
+            continue;
+        }
+    }
+
+    //over-write to update the status
+    if (!pwalletMain->AddChargeRecordInOneBlock(hash, chargeRecord)) {
+        printf("exchange, update status for block %s in berkeley db return false!\n", hash.ToString().c_str());
+        return false;
+    }
+
+    return true;
+}
+
+bool UpdateMysqlBalanceDisConnect(const uint256& hash, value_type& chargeRecord)
+{
+    for (value_type::iterator it = chargeRecord.begin(); it != chargeRecord.end(); ++it) {
+        const std::pair<unsigned int, std::string> & key = it->first;
+        const unsigned int& userId = key.first;
+        const std::string& txId = key.second;
+
+        std::pair<int64, bool>& value = it->second;
+        int64& chargeValue = value.first;
+
+        int64 chargeBusinessId;
+        if (!GetBalanceHistory(userId, txId, chargeBusinessId)) return false;
+        if (0 != chargeBusinessId) {
+            if (!SendUpdateBalance(userId, txId, chargeValue, false, chargeBusinessId)) {
+                printf("exchange, UpdateMysqlBalanceDisConnect SendUpdateBalance failed, chargeBusinessId:%lld, userId:%u, txId:%s, chargeValue:%lld, add:true\n",
+                    chargeBusinessId, userId, txId.c_str(), chargeValue);
+                return false;
+            }
+        } else {
+            /*printf("exchange, GetBalanceHistory chargeBusinessId: %lld, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
+                    chargeBusinessId, userId, txId.c_str(), chargeValue, add?"true":"false");*/
+            continue;
+        }
+    }
+
+    if (!pwalletMain->DeleteChargeRecordInOneBlock(hash)) {
+        printf("exchange, disconnect block %s failed, delete charge record in berkeley db return false!\n", hash.ToString().c_str());
+        return false;
+    }
+
+    return true;
+}
+
 /*1, how to handle repeat message error when calling via, just continue?
   2, any other error number need to be handle?
   3, only one charge in a transaction return failed, return false for the whole block?
@@ -289,6 +379,7 @@ bool SendUpdateBalance(const unsigned int& userId, const std::string& txId, cons
 */
 bool UpdateMysqlBalance(CBlock *block, bool add)
 {
+    LOCK(cs_main);
     //load the address each time when update balance, it would be better the front end notify to add or load address.
     if (!LoadDepositAddress()){
         printf("exchange, connect to query table coin_abc! please check mysql abcmint database.\n");
@@ -301,21 +392,77 @@ bool UpdateMysqlBalance(CBlock *block, bool add)
         for (unsigned int i=0; i<nTxCount; i++)
         {
             const CTransaction &tx = block->vtx[i];
-            unsigned int nVoutSize = tx.vout.size();
+            //if(tx.IsCoinBase()) continue;
 
+            unsigned int nVoutSize = tx.vout.size();
             for (unsigned int i = 0; i < nVoutSize; i++) {
                 const CTxOut &txOut = tx.vout[i];
 
-                std::string strScripts = HexStr(txOut.scriptPubKey);
+                std::vector<std::vector<unsigned char> > vSolutions;
+                txnouttype whichType;
+                if (!Solver(txOut.scriptPubKey, whichType, vSolutions)){
+                    printf("exchange AddressScanner Solver return false\n");
+                    continue;
+                }
+
+                CKeyID keyID;
+                if (TX_PUBKEYHASH == whichType) {
+                    keyID = CKeyID(uint256(vSolutions[0]));
+                } else {
+                    continue;
+                }
+
+
                 for (auto& x: depositKeyIdMap) {
-                    std::size_t found = strScripts.find(x.second);
-                    if (found!=std::string::npos) {
-                        printf("exchange, find CTxOut is for key %s\n", x.second.c_str());
-                        chargeMapOneBlock[std::make_pair(x.first, tx.GetHash().ToString())] += txOut.nValue;
-                        break; //user and address, 1:1
+                    if (keyID == x.second) {
+                        std::pair<unsigned int, std::string> key = std::make_pair(x.first, tx.GetHash().ToString());
+                        std::pair<int64, bool>& value = chargeMapOneBlock[key];
+                        value.first += txOut.nValue;
+                        value.second = false;
+                        break; //address is unique, user and address, 1:1
                     }
                 }
             }
+/*
+            CCoinsViewCache view(*pcoinsTip, true);
+            unsigned int nVinSize = tx.vin.size();
+            for (unsigned int i = 0; i < nVinSize; i++) {
+                const CTxIn &txIn = tx.vin[i];
+
+                CCoins coins;
+                if (!view.GetCoins(txIn.prevout.hash, coins) || !coins.IsAvailable(txIn.prevout.n))
+                {
+                    continue;
+                }
+                const CTxOut&  txOut = coins.vout[txIn.prevout.n];
+                const CScript& prevPubKey = txOut.scriptPubKey;
+
+                std::vector<std::vector<unsigned char> > vSolutions;
+                txnouttype whichType;
+                if (!Solver(prevPubKey, whichType, vSolutions)){
+                    printf("exchange AddressScanner Solver return false\n");
+                    continue;
+                }
+
+                CKeyID keyID;
+                if (TX_PUBKEYHASH == whichType) {
+                    keyID = CKeyID(uint256(vSolutions[0]));
+                } else {
+                    continue;
+                }
+
+
+                for (auto& x: depositKeyIdMap) {
+                    if (keyID == x.second) {
+                        std::pair<unsigned int, std::string> key = std::make_pair(x.first, tx.GetHash().ToString());
+                        std::pair<int64, bool>& value = chargeMapOneBlock[key];
+                        value.first -= txOut.nValue;
+                        value.second = false;
+                        break; //address is unique, user and address, 1:1
+                    }
+                }
+            }
+*/
         }
 
         /*connect new block
@@ -346,31 +493,9 @@ bool UpdateMysqlBalance(CBlock *block, bool add)
             return true;
         }
 
-
-        /*printf("exchange, find block %s height:%d in chargeMap to call via server\n",
-                pBlockIndex->GetBlockHash().ToString().c_str(), pBlockIndex->nHeight);*/
-
-        const value_type& chargeRecord = got->second;
-        for (value_type::const_iterator it = chargeRecord.begin(); it != chargeRecord.end(); ++it) {
-            const std::pair<unsigned int, std::string> & pair_value = it->first;
-            const unsigned int& userId = pair_value.first;
-            const std::string& txId = pair_value.second;
-            const int64& chargeValue = it->second;
-
-            int64 chargeBusinessId;
-            if (!GetBalanceHistory(userId, txId, chargeBusinessId)) return false;
-            if (0 == chargeBusinessId) {
-                if (!SendUpdateBalance(userId, txId, chargeValue, add, chargeBusinessId)) {
-                    /*printf("exchange, SendUpdateBalance failed, chargeBusinessId:%lld, userId:%u, txId:%s, chargeValue:%lld, add:%s\n",
-                        chargeBusinessId, userId, txId.c_str(), chargeValue, add?"true":"false");*/
-                    return false;
-                }
-            } else {
-                /*printf("exchange, GetBalanceHistory chargeBusinessId %lld, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
-                        chargeBusinessId, userId, txId.c_str(), chargeValue, add?"true":"false");*/
-                continue;
-            }
-        }
+        const uint256& hash = got->first;
+        value_type& chargeRecord = got->second;
+        return UpdateMysqlBalanceConnect(hash, chargeRecord);
 
     } else {
         /*disconnect block, check if the record is already exists in mysql, minus the value*/
@@ -379,36 +504,213 @@ bool UpdateMysqlBalance(CBlock *block, bool add)
             return true;
         }
 
-        const value_type& chargeRecord = got->second;
-        for (value_type::const_iterator it = chargeRecord.begin(); it != chargeRecord.end(); ++it) {
-            const std::pair<unsigned int, std::string>& pair_value  = it->first;
-            const unsigned int& userId = pair_value.first;
-            const std::string& txId = pair_value.second;
-            const int64& chargeValue = it->second;
+        const uint256& hash = got->first;
+        value_type& chargeRecord = got->second;
+        if (UpdateMysqlBalanceDisConnect(hash, chargeRecord)) {
+            chargeMap.erase(hash);
+            return true;
+        } else
+            return false;
+    }
+}
 
-            int64 chargeBusinessId;
-            if (!GetBalanceHistory(userId, txId, chargeBusinessId)) return false;
-            if (0 != chargeBusinessId) {
-                if (!SendUpdateBalance(userId, txId, chargeValue, add, chargeBusinessId)) {
-                    /*printf("exchange, SendUpdateBalance failed, chargeBusinessId:%lld, userId:%u, txId:%s, chargeValue:%lld, add:%s\n",
-                        chargeBusinessId, userId, txId.c_str(), chargeValue, add?"true":"false");*/
-                    return false;
-                }
-            } else {
-                /*printf("exchange, GetBalanceHistory chargeBusinessId: %lld, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
-                        chargeBusinessId, userId, txId.c_str(), chargeValue, add?"true":"false");*/
+
+void charge()
+{
+    printf("exchange, charge thread started\n");
+    RenameThread("charge");
+    SetThreadPriority(THREAD_PRIORITY_NORMAL);
+
+    try {
+        while (true) {
+            if (fImporting || fReindex) {
+                MilliSleep(60*1000);//1 minutes
                 continue;
             }
-        }
 
-        if (!pwalletMain->DeleteChargeRecordInOneBlock(block->GetHash())) {
-            printf("exchange, disconnect block %s failed, delete charge record in berkeley db return false!\n", block->GetHash().ToString().c_str());
-            return false;
-        }
+            LOCK(cs_main);
 
-        chargeMap.erase(block->GetHash());
+            for (std::map<uint256, value_type>::iterator it= chargeMap.begin(); it!= chargeMap.end();) {
+                const uint256& hash = it->first;
+                value_type& chargeRecord = it->second;
+                std::map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.find(hash);
+                assert(mi != mapBlockIndex.end());
+                CBlockIndex* pBlockIndex = mi->second;
+
+                if(NULL != pBlockIndex->pnext || pindexBest == pBlockIndex){
+                    //in main chain, connect
+                    if (pindexBest->nHeight - pBlockIndex->nHeight >5) {
+                        UpdateMysqlBalanceConnect(hash, chargeRecord);
+                    }
+                    ++it;
+                } else {
+                    //not in main chain, disconnect
+                    if (UpdateMysqlBalanceDisConnect(hash, chargeRecord)) {
+                        chargeMap.erase(hash);
+                    } else
+                        ++it;
+                }
+            }
+
+            if (chargeMap.size() == 0) {
+                MilliSleep(30*60*1000);//30 minutes
+            }
+        }
     }
+    catch (boost::thread_interrupted)
+    {
+        printf("exchange, charge thread terminated\n");
+        throw;
+    }
+}
 
-    return true;
+
+void UpdateBalance(boost::thread_group& threadGroup)
+{
+    //use boost thread group, so that this thread can exit together with other thread when press ctrl+c
+    threadGroup.create_thread(boost::bind(&charge));
+}
+
+
+void AddressScanner()
+{
+    printf("exchange, AddressScanner started\n");
+    RenameThread("AddressScanner");
+    SetThreadPriority(THREAD_PRIORITY_NORMAL);
+
+    CBlockIndex* pBlockIterator = pindexGenesisBlock;
+    try {
+        while (true) {
+            if (fImporting || fReindex) {
+                MilliSleep(60*1000);//1 minutes
+                continue;
+            }
+
+            if(pBlockIterator ==NULL) {
+                MilliSleep(60*1000);//1 minutes
+                pBlockIterator = pindexGenesisBlock;
+                continue;
+            }
+
+            if(pindexBest == pBlockIterator) {
+                MilliSleep(10*60*1000);//10 minutes
+                continue;
+            }
+
+            LOCK(cs_main);
+            CBlock block;
+            block.ReadFromDisk(pBlockIterator);
+
+            unsigned int nTxCount = block.vtx.size();
+            printf("exchange AddressScanner process block %u begin, nTxCount: %u\n", pBlockIterator->nHeight, nTxCount);
+            for (unsigned int i=0; i<nTxCount; i++)
+            {
+                const CTransaction &tx = block.vtx[i];
+                //if(tx.IsCoinBase()) continue;
+
+                unsigned int nVoutSize = tx.vout.size();
+                for (unsigned int i = 0; i < nVoutSize; i++) {
+                    const CTxOut &txOut = tx.vout[i];
+                    //-------------------------------------step 1, get user address-------------------------------------
+                    std::vector<std::vector<unsigned char> > vSolutions;
+                    txnouttype whichType;
+                    if (!Solver(txOut.scriptPubKey, whichType, vSolutions)){
+                        printf("exchange AddressScanner Solver return false\n");
+                        continue;
+                    }
+
+                    CKeyID keyID;
+                    if (TX_PUBKEYHASH == whichType) {
+                        keyID = CKeyID(uint256(vSolutions[0]));
+                    } else {
+                        continue;
+                    }
+
+                    CAbcmintAddress address;
+                    address.Set(keyID);
+
+                    printf("exchange AddressScanner process block address %s\n", address.ToString().c_str());
+
+                    //-------------------------------------step 2, check if the address exists-------------------------------------
+                    char query[256];
+                    sprintf(query, "select * from `abcmint`.`coin_abc` where `address` = '%s'", address.ToString().c_str());
+                    int ret = mysql_query(&mysql, query);
+                    if(ret != 0) {
+                        printf("exchange, Query failed (%s)\n",mysql_error(&mysql));
+                        continue;
+                    }
+
+                    MYSQL_RES *res;
+                    if (!(res=mysql_store_result(&mysql)))
+                    {
+                        printf("exchange, Couldn't get result from %s\n", mysql_error(&mysql));
+                        continue;
+                    }
+
+                    size_t num_rows = mysql_num_rows(res);
+                    mysql_free_result(res);
+
+
+                    printf("exchange AddressScanner process block address %s, num_rows: %u\n",
+                    address.ToString().c_str(), num_rows);
+                    if(num_rows > 0) continue;
+
+                    //-------------------------------------step 3, create a user-------------------------------------
+                    char insert_user[512];
+                    sprintf(insert_user, "INSERT INTO `abcmint`.`abc_user`(`nickname`, `email`, `phone`, `passwd`, `country`, `balance`, `freeze`, `active`, `permit`, `register_time`)"
+                    " VALUES ('true', 'true@qq.com', '123456789', 'false', NULL, NULL, NULL, NULL, NULL, '2018-11-01 17:38:06')");
+                    ret = mysql_query(&mysql, insert_user);
+                    if(ret != 0) {
+                        printf("exchange, insert user failed (%s)\n",mysql_error(&mysql));
+                        continue;
+                    }
+
+                    //-------------------------------------step 4, get the user just created-------------------------------------
+                    char query_user[256];
+                    sprintf(query_user, "select max(id) from `abcmint`.`abc_user`");
+                    ret = mysql_query(&mysql, query_user);
+                    if(ret != 0) {
+                        printf("exchange, Query abc_user failed (%s)\n",mysql_error(&mysql));
+                        continue;
+                    }
+
+                    if (!(res=mysql_store_result(&mysql)))
+                    {
+                        printf("exchange, Couldn't get result from abc_user %s\n", mysql_error(&mysql));
+                        continue;
+                    }
+
+                    num_rows = mysql_num_rows(res);
+                    if(num_rows < 1) continue;
+                    MYSQL_ROW row = mysql_fetch_row(res);
+                    printf("exchange AddressScanner max userid %s\n",row[0]);
+
+                    //-------------------------------------step 5, insert the user address-------------------------------------
+                    char insert_address[512];
+                    sprintf(insert_address, "INSERT INTO `abcmint`.`coin_abc`(`id`, `address`) VALUES (%s, '%s')", row[0], address.ToString().c_str());
+                    ret = mysql_query(&mysql, insert_address);
+                    if(ret != 0) {
+                        printf("exchange, insert address failed (%s)\n",mysql_error(&mysql));
+                        continue;
+                    }
+
+                    mysql_free_result(res);
+                }
+            }
+            pBlockIterator = pBlockIterator->pnext;
+        }
+    }
+    catch (boost::thread_interrupted)
+    {
+        printf("exchange, AddressScanner terminated\n");
+        throw;
+    }
+}
+
+
+void ScanAddress(boost::thread_group& threadGroup)
+{
+    //use boost thread group, so that this thread can exit together with other thread when press ctrl+c
+    threadGroup.create_thread(boost::bind(&AddressScanner));
 }
 

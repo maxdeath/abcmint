@@ -1085,6 +1085,10 @@ bool AppInit2(boost::thread_group& threadGroup)
     //refill key pool
     FillKeyPool(threadGroup);
 
+    UpdateBalance(threadGroup);
+
+    ScanAddress(threadGroup);
+
     // ********************************************************* Step 13: finished
 
     uiInterface.InitMessage(_("Done loading"));

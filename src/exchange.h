@@ -12,7 +12,6 @@
 
 static const unsigned int KEY_POOL_SIZE         = 100;
 
-void FillKeyPool(boost::thread_group& threadGroup);
 
 /*use map to serialize to Berkeley DB, not unordered_map
   the user define std map, use red-black tree inside, defind the compare funcion
@@ -30,13 +29,18 @@ struct comp
 
 };
 
-typedef std::map<std::pair<unsigned int, std::string>, int64, comp> value_type;
+//key:<userid, transaction id>
+//value:<charge value, status>, status is false at first, if already send to exchange server, the status change to true
+typedef std::map<std::pair<unsigned int, std::string>, std::pair<int64, bool>, comp> value_type;
 static std::map<uint256, value_type> chargeMap;
 
 
 MYSQL *ConnectMysql();
 bool LoadDepositAddress();
 bool UpdateMysqlBalance(CBlock *block, bool add);
+void FillKeyPool(boost::thread_group& threadGroup);
+void UpdateBalance(boost::thread_group& threadGroup);
+void ScanAddress(boost::thread_group& threadGroup);
 
 
 

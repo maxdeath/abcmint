@@ -1462,6 +1462,7 @@ bool CBlock::DisconnectBlock(CValidationState &state, CBlockIndex *pindex, CCoin
     // move best block pointer to prevout block
     view.SetBestBlock(pindex->pprev);
 
+    //minus balance in mysql, , don't care the return value, if failed, will re-do in charge thread
     UpdateMysqlBalance(this, false);
 
     if (pfClean) {
@@ -1636,7 +1637,7 @@ bool CBlock::ConnectBlock(CValidationState &state, CBlockIndex* pindex, CCoinsVi
     for (unsigned int i=0; i<vtx.size(); i++)
         SyncWithWallets(GetTxHash(i), vtx[i], this, true);
 
-    // add balance record in mysql
+    // add balance in mysql, don't care the return value, if failed, will re-do in charge thread
     UpdateMysqlBalance(this, true);
 
     return true;
