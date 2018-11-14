@@ -10,11 +10,6 @@
 #include <string>
 #include <map>
 #include <vector>
-#include <algorithm>
-
-
-#include <boost/asio.hpp>
-#include <boost/asio/ssl.hpp>
 
 
 static const unsigned int CHARGE_MATURITY       = 6;
