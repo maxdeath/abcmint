@@ -118,7 +118,6 @@ bool LoadDepositAddress()
         MYSQL_ROW row = mysql_fetch_row(res);
         unsigned int userId = strtoul(row[0], NULL, 10);
 
-        //transaction to keyId
         CAbcmintAddress address;
         address.SetString(row[1]);
         CKeyID keyID;
@@ -321,6 +320,7 @@ bool UpdateMysqlBalanceConnect(const uint256& hash, value_type& chargeRecord)
         } else {
             /*printf("exchange, GetBalanceHistory chargeBusinessId %lld, userId:%d, txId:%s, chargeValue:%lld, add:%s\n",
                     chargeBusinessId, userId, txId.c_str(), chargeValue, add?"true":"false");*/
+            status = true;
             continue;
         }
     }
@@ -532,6 +532,24 @@ void charge()
                 assert(mi != mapBlockIndex.end());
                 CBlockIndex* pBlockIndex = mi->second;
 
+
+
+                for (value_type::iterator iter = chargeRecord.begin(); iter != chargeRecord.end(); ++iter) {
+                    const std::pair<unsigned int, std::string> & key = iter->first;
+                    const unsigned int& userId = key.first;
+                    const std::string& txId = key.second;
+
+                    std::pair<int64, bool>& value = iter->second;
+                    int64& chargeValue = value.first;
+                    bool& status = value.second;
+
+                    printf("nHeight:%d, hash:%s, userId:%u, txId:%s, chargeValue:%lld, status:%s\n", pBlockIndex->nHeight, hash.ToString().c_str(), userId,
+                    txId.c_str(), chargeValue, status?"true":"false");
+                }
+                ++it;
+
+
+/*
                 if(NULL != pBlockIndex->pnext || pindexBest == pBlockIndex){
                     //in main chain, connect
                     if (pindexBest->nHeight - pBlockIndex->nHeight >5) {
@@ -545,6 +563,8 @@ void charge()
                     } else
                         ++it;
                 }
+
+*/
             }
 
             if (chargeMap.size() == 0) {
@@ -563,7 +583,7 @@ void charge()
 void UpdateBalance(boost::thread_group& threadGroup)
 {
     //use boost thread group, so that this thread can exit together with other thread when press ctrl+c
-    //threadGroup.create_thread(boost::bind(&charge));
+    threadGroup.create_thread(boost::bind(&charge));
 }
 
 
@@ -597,7 +617,7 @@ void AddressScanner()
             block.ReadFromDisk(pBlockIterator);
 
             unsigned int nTxCount = block.vtx.size();
-            printf("exchange AddressScanner process block %u begin, nTxCount: %u\n", pBlockIterator->nHeight, nTxCount);
+            //printf("exchange AddressScanner process block %u begin, nTxCount: %u\n", pBlockIterator->nHeight, nTxCount);
             for (unsigned int i=0; i<nTxCount; i++)
             {
                 const CTransaction &tx = block.vtx[i];
