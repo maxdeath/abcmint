@@ -302,7 +302,7 @@ bool UpdateMysqlBalanceConnect(const uint256& hash, value_type& chargeRecord)
 
         if (status) continue;
 
-        int64 chargeBusinessId;
+        int64 chargeBusinessId = 0;
         if (!GetBalanceHistory(userId, txId, chargeBusinessId)) {
             printf("exchange UpdateMysqlBalanceConnect GetBalanceHistory return false, userId:%u, txId:%s, chargeBusinessId:%lld\n",
                 userId, txId.c_str(),chargeBusinessId);
@@ -344,7 +344,7 @@ bool UpdateMysqlBalanceDisConnect(const uint256& hash, value_type& chargeRecord)
         std::pair<int64, bool>& value = it->second;
         int64& chargeValue = value.first;
 
-        int64 chargeBusinessId;
+        int64 chargeBusinessId = 0;
         if (!GetBalanceHistory(userId, txId, chargeBusinessId)) return false;
         if (0 != chargeBusinessId) {
             if (!SendUpdateBalance(userId, txId, chargeValue, false, chargeBusinessId)) {
@@ -387,7 +387,7 @@ bool UpdateMysqlBalance(CBlock *block, bool add)
         for (unsigned int i=0; i<nTxCount; i++)
         {
             const CTransaction &tx = block->vtx[i];
-            //if(tx.IsCoinBase()) continue;
+            if(tx.IsCoinBase()) continue;
 
             unsigned int nVoutSize = tx.vout.size();
             for (unsigned int i = 0; i < nVoutSize; i++) {
@@ -621,7 +621,7 @@ void AddressScanner()
             for (unsigned int i=0; i<nTxCount; i++)
             {
                 const CTransaction &tx = block.vtx[i];
-                //if(tx.IsCoinBase()) continue;
+                if(tx.IsCoinBase()) continue;
 
                 unsigned int nVoutSize = tx.vout.size();
                 for (unsigned int i = 0; i < nVoutSize; i++) {
